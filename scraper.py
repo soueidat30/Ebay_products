@@ -2,6 +2,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
 import time
 from datetime import datetime
@@ -18,7 +20,6 @@ options.add_argument(f"user-agent={ua.random}")
 service = Service(ChromeDriverManager().install())
 driver = webdriver.Chrome(service=service, options=options)
 
-URL = "https://www.ebay.com/globaldeals/tech"
 def scroll_down_page(driver):
     last_height = driver.execute_script("return document.body.scrollHeight")
     while True:
@@ -55,7 +56,6 @@ def scrape_product(product, timestamp, driver):
     except:
         shipping = "N/A"
 
-
     return {
         "timestamp": timestamp,
         "title": title,
@@ -65,14 +65,18 @@ def scrape_product(product, timestamp, driver):
         "item url": item_url
     }
 
-
 def scrape_product_data(driver):
     rows = []
-    driver.get('https://www.ebay.com/globaldeals/tech')
-    time.sleep(3)
+    driver.get("https://www.ebay.com/globaldeals/tech")
+
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[itemscope][itemtype="https://schema.org/Product"]'))
+    )
+
     scroll_down_page(driver)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     products = driver.find_elements(By.CSS_SELECTOR, 'div[itemscope][itemtype="https://schema.org/Product"]')
+
     for p in products:
         rows.append(scrape_product(p, timestamp, driver))
     return rows
@@ -87,17 +91,16 @@ def save_to_csv(list_of_dicts):
         ])
     df_new = pd.DataFrame(list_of_dicts)
     df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+    df_combined.drop_duplicates(subset=["item url"], inplace=True)
     df_combined.to_csv(file_name, index=False)
 
 if __name__ == "__main__":
     try:
-        scraped_data = scrape_product_data()
-
+        scraped_data = scrape_product_data(driver)
         if scraped_data:
             save_to_csv(scraped_data)
             print("Data saved to ebay_tech_deals.csv")
         else:
             print("Failed to scrape data or no products found.")
-
     finally:
         driver.quit()
